@@ -256,12 +256,11 @@ def train(pretrained_model_path=pretrained_model_path): # 전에 학습하던게
     loss, context, sentence, mask = caption_generator.build_model()
     saver = tf.train.Saver(max_to_keep=50)
 
+    train_op = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+    tf.initialize_all_variables().run()
     if pretrained_model_path is not None:
         print "Starting with pretrained model"
         saver.restore(sess, pretrained_model_path)
-
-    train_op = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-    tf.initialize_all_variables().run()
 
     index = list(annotation_data.index)
     np.random.shuffle(index)
