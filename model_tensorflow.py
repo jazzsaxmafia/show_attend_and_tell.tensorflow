@@ -143,6 +143,7 @@ class Caption_Generator():
         context_encode = tf.matmul(tf.squeeze(context), self.image_att_W)
         generated_words = []
         logit_list = []
+        alpha_list = []
         word_emb = tf.zeros([1, self.dim_embed])
         for ind in range(maxlen):
             x_t = tf.matmul(word_emb, self.lstm_W) + self.lstm_b
@@ -154,6 +155,7 @@ class Caption_Generator():
             alpha = tf.nn.softmax(alpha)
 
             alpha = tf.reshape(alpha, (ctx_shape[0], -1))
+            alpha_list.append(alpha)
 
             weighted_context = tf.reduce_sum(tf.squeeze(context) * alpha, 0)
             weighted_context = tf.expand_dims(weighted_context, 0)
@@ -183,7 +185,7 @@ class Caption_Generator():
             generated_words.append(max_prob_word)
             logit_list.append(logit_words)
 
-        return context, generated_words, logit_list
+        return context, generated_words, logit_list, alpha_list
 
 
 def preProBuildWordVocab(sentence_iterator, word_count_threshold=30): # borrowed this function from NeuralTalk
@@ -296,7 +298,7 @@ def train(pretrained_model_path=pretrained_model_path): # 전에 학습하던게
             print "Current Cost: ", loss_value
         saver.save(sess, os.path.join(model_path, 'model'), global_step=epoch)
 
-def test(test_feat='./guitar_player.npy', model_path='./model/model-8', maxlen=20):
+def test(test_feat='./guitar_player.npy', model_path='./model/model-6', maxlen=20):
     annotation_data = pd.read_pickle(annotation_path)
     captions = annotation_data['caption'].values
     wordtoix, ixtoword, bias_init_vector = preProBuildWordVocab(captions)
@@ -314,12 +316,20 @@ def test(test_feat='./guitar_player.npy', model_path='./model/model-8', maxlen=2
             batch_size=batch_size,
             ctx_shape=ctx_shape)
 
-    context, generated_words, logit_list = caption_generator.build_generator(maxlen=maxlen)
+    context, generated_words, logit_list, alpha_list = caption_generator.build_generator(maxlen=maxlen)
     saver = tf.train.Saver()
     saver.restore(sess, model_path)
 
     generated_word_index = sess.run(generated_words, feed_dict={context:feat})
-    ipdb.set_trace()
+    alpha_list_val = sess.run(alpha_list, feed_dict={context:feat})
+    generated_words = [ixtoword[x[0]] for x in generated_word_index]
+    punctuation = np.argmax(np.array(generated_words) == '.')+1
 
+    generated_words = generated_words[:punctuation]
+    alpha_list_val = alpha_list_val[:punctuation]
+    return generated_words, alpha_list_val
+
+#    generated_sentence = ' '.join(generated_words)
+#    ipdb.set_trace()
 
 
