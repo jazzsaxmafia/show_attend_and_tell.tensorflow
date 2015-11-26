@@ -11,3 +11,5 @@
 * Extract VGG conv5_3 features using make_flickr_dataset.py
 * Train: run train() in model_tensorflow.py
 * Test: run test() in model_tensorflow.py
+
+![alt tag](https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow/blob/master/attend.jpg)
