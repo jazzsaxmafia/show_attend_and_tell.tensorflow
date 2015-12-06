@@ -1,5 +1,5 @@
 # Neural Caption Generator with Attention
-* Implementation of "Show, attend and Tell" http://arxiv.org/abs/1502.03044
+* Tensorflow implementation of "Show, attend and Tell" http://arxiv.org/abs/1502.03044
 * Borrowed most of the idea from the author's source code https://github.com/kelvinxu/arctic-captions
 
 ## Code
