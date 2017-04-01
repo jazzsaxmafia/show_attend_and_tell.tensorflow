@@ -28,9 +28,12 @@ def crop_image(x, target_height=227, target_width=227):
 
     return cv2.resize(resized_image, (target_height, target_width))
 
-deploy = '/home/taeksoo/Package/caffe/models/bvlc_reference_caffenet/deploy.prototxt'
-model = '/home/taeksoo/Package/caffe/models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel'
-mean = '/home/taeksoo/Package/caffe/python/caffe/imagenet/ilsvrc_2012_mean.npy'
+# Load the Caffe Model Layer
+deploy = '/home/zyq/Code/caffe/models/bvlc_reference_caffenet/deploy.prototxt'
+# Load the Pretrained Model
+model = '/home/zyq/Code/caffe/models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel'
+# Subtract the mean file to make data zero-centered.
+mean = '/home/zyq/Code/caffe/python/caffe/imagenet/ilsvrc_2012_mean.npy'
 
 class CNN(object):
 
@@ -47,6 +50,7 @@ class CNN(object):
         self.width = width
         self.height = height
 
+    # Preprocess the image and Get the model layer
     def get_net(self):
         caffe.set_mode_gpu()
         net = caffe.Net(self.deploy, self.model, caffe.TEST)
@@ -59,6 +63,8 @@ class CNN(object):
 
         return net, transformer
 
+    # Get CNN layer representation of the images
+    # And store representation in *.feats
     def get_features(self, image_list, layers='fc7', layer_sizes=[4096]):
         iter_until = len(image_list) + self.batch_size
         all_feats = np.zeros([len(image_list)] + layer_sizes)
