@@ -7,9 +7,25 @@ import numpy as np
 import pandas as pd
 import cPickle
 
-from tensorflow.models.rnn import rnn_cell
-import tensorflow.python.platform
+#from tensorflow.models.rnn import rnn_cell
+#import tensorflow.python.platform
 from keras.preprocessing import sequence
+
+#############################
+###### Learning Parameters ######
+n_epochs=1000
+batch_size=10 #80
+dim_embed=256
+dim_ctx=512
+dim_hidden=256
+ctx_shape=[196,512]
+pretrained_model_path = './model/model-5'
+
+###### Feature Path Parameters #####
+annotation_path = './data/annotations.pickle'
+feat_path = './data/feats.npy'
+model_path = './model/'
+#############################
 
 class Caption_Generator():
 
@@ -29,8 +45,9 @@ class Caption_Generator():
         self.batch_size = batch_size
 
         with tf.device("/cpu:0"):
-            self.Wemb = tf.Variable(tf.random_uniform([n_words, dim_embed], -1.0, 1.0), name='Wemb')
-
+            #self.Wemb = tf.Variable(tf.random_uniform([n_words, dim_embed], -1.0, 1.0), name='Wemb')
+            self.Wemb = tf.get_variable("Wemb", [n_words, dim_embed], initializer=tf.random_uniform_initializer(-1.0, 1.0))
+            #tf.get_variable_scope().reuse_variables()
         self.init_hidden_W = self.init_weight(dim_ctx, dim_hidden, name='init_hidden_W')
         self.init_hidden_b = self.init_bias(dim_hidden, name='init_hidden_b')
 
@@ -43,6 +60,7 @@ class Caption_Generator():
 
         self.image_encode_W = self.init_weight(dim_ctx, dim_hidden*4, name='image_encode_W')
 
+        #Attention weights
         self.image_att_W = self.init_weight(dim_ctx, dim_ctx, name='image_att_W')
         self.hidden_att_W = self.init_weight(dim_hidden, dim_ctx, name='hidden_att_W')
         self.pre_att_b = self.init_bias(dim_ctx, name='pre_att_b')
@@ -67,6 +85,7 @@ class Caption_Generator():
 
         return initial_hidden, initial_memory
 
+    # Implement the attention mechanism
     def build_model(self):
         context = tf.placeholder("float32", [self.batch_size, self.ctx_shape[0], self.ctx_shape[1]])
         sentence = tf.placeholder("int32", [self.batch_size, self.n_lstm_steps])
@@ -74,7 +93,7 @@ class Caption_Generator():
 
         h, c = self.get_initial_lstm(tf.reduce_mean(context, 1))
 
-        # TensorFlow가 dot(3D tensor, matrix) 계산을 못함;;; ㅅㅂ 삽질 ㄱㄱ
+        # TensorFlow dot(3D tensor, matrix)
         context_flat = tf.reshape(context, [-1, self.dim_ctx])
         context_encode = tf.matmul(context_flat, self.image_att_W) # (batch_size, 196, 512)
         context_encode = tf.reshape(context_encode, [-1, ctx_shape[0], ctx_shape[1]])
@@ -86,7 +105,7 @@ class Caption_Generator():
             if ind == 0:
                 word_emb = tf.zeros([self.batch_size, self.dim_embed])
             else:
-                tf.get_variable_scope().reuse_variables()
+                #tf.get_variable_scope().reuse_variables()
                 with tf.device("/cpu:0"):
                     word_emb = tf.nn.embedding_lookup(self.Wemb, sentence[:,ind-1])
 
@@ -94,8 +113,9 @@ class Caption_Generator():
 
             labels = tf.expand_dims(sentence[:,ind], 1)
             indices = tf.expand_dims(tf.range(0, self.batch_size, 1), 1)
-            concated = tf.concat(1, [indices, labels])
-            onehot_labels = tf.sparse_to_dense( concated, tf.pack([self.batch_size, self.n_words]), 1.0, 0.0)
+            #concated = tf.concat(1, [indices, labels])
+            concated = tf.concat([indices, labels], 1)
+            onehot_labels = tf.sparse_to_dense( concated, tf.stack([self.batch_size, self.n_words]), 1.0, 0.0)
 
             context_encode = context_encode + \
                  tf.expand_dims(tf.matmul(h, self.hidden_att_W), 1) + \
@@ -103,7 +123,7 @@ class Caption_Generator():
 
             context_encode = tf.nn.tanh(context_encode)
 
-            # 여기도 context_encode: 3D -> flat required
+            # context_encode: 3D -> flat required
             context_encode_flat = tf.reshape(context_encode, [-1, self.dim_ctx]) # (batch_size*196, 512)
             alpha = tf.matmul(context_encode_flat, self.att_W) + self.att_b # (batch_size*196, 1)
             alpha = tf.reshape(alpha, [-1, self.ctx_shape[0]])
@@ -112,7 +132,8 @@ class Caption_Generator():
             weighted_context = tf.reduce_sum(context * tf.expand_dims(alpha, 2), 1)
 
             lstm_preactive = tf.matmul(h, self.lstm_U) + x_t + tf.matmul(weighted_context, self.image_encode_W)
-            i, f, o, new_c = tf.split(1, 4, lstm_preactive)
+            #i, f, o, new_c = tf.split(1, 4, lstm_preactive)
+            i, f, o, new_c = tf.split(lstm_preactive, 4, 1)
 
             i = tf.nn.sigmoid(i)
             f = tf.nn.sigmoid(f)
@@ -127,7 +148,8 @@ class Caption_Generator():
             logits = tf.nn.dropout(logits, 0.5)
 
             logit_words = tf.matmul(logits, self.decode_word_W) + self.decode_word_b
-            cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logit_words, onehot_labels)
+            #cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logit_words, onehot_labels)
+            cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logit_words, labels=onehot_labels)
             cross_entropy = cross_entropy * mask[:,ind]
 
             current_loss = tf.reduce_sum(cross_entropy)
@@ -162,7 +184,8 @@ class Caption_Generator():
 
             lstm_preactive = tf.matmul(h, self.lstm_U) + x_t + tf.matmul(weighted_context, self.image_encode_W)
 
-            i, f, o, new_c = tf.split(1, 4, lstm_preactive)
+            #i, f, o, new_c = tf.split(1, 4, lstm_preactive)
+            i, f, o, new_c = tf.split(lstm_preactive, 4, 1)
 
             i = tf.nn.sigmoid(i)
             f = tf.nn.sigmoid(f)
@@ -217,23 +240,7 @@ def preProBuildWordVocab(sentence_iterator, word_count_threshold=30): # borrowed
     return wordtoix, ixtoword, bias_init_vector
 
 
-###### 학습 관련 Parameters ######
-n_epochs=1000
-batch_size=80
-dim_embed=256
-dim_ctx=512
-dim_hidden=256
-ctx_shape=[196,512]
-pretrained_model_path = './model/model-8'
-#############################
-###### 잡다한 Parameters #####
-annotation_path = './data/annotations.pickle'
-feat_path = './data/feats.npy'
-model_path = './model/'
-#############################
-
-
-def train(pretrained_model_path=pretrained_model_path): # 전에 학습하던게 있으면 초기값 설정.
+def train(pretrained_model_path=pretrained_model_path): # Load the pretrained model if exists.
     annotation_data = pd.read_pickle(annotation_path)
     captions = annotation_data['caption'].values
     wordtoix, ixtoword, bias_init_vector = preProBuildWordVocab(captions)
@@ -250,7 +257,7 @@ def train(pretrained_model_path=pretrained_model_path): # 전에 학습하던게
             dim_embed=dim_embed,
             dim_ctx=dim_ctx,
             dim_hidden=dim_hidden,
-            n_lstm_steps=maxlen+1, # w1~wN까지 예측한 뒤 마지막에 '.'예측해야하니까 +1
+            n_lstm_steps=maxlen+1, #w1~wN까지 예측한 뒤 마지막에 '.'예측해야하니까 +1
             batch_size=batch_size,
             ctx_shape=ctx_shape,
             bias_init_vector=bias_init_vector)
@@ -259,22 +266,29 @@ def train(pretrained_model_path=pretrained_model_path): # 전에 학습하던게
     saver = tf.train.Saver(max_to_keep=50)
 
     train_op = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-    tf.initialize_all_variables().run()
+
+    tf.global_variables_initializer().run()
+    #tf.initialize_all_variables().run()
+
+    # if you don not have a pretrained model, just comment out below codes.
     if pretrained_model_path is not None:
         print "Starting with pretrained model"
         saver.restore(sess, pretrained_model_path)
-
+    
     index = list(annotation_data.index)
     np.random.shuffle(index)
     annotation_data = annotation_data.ix[index]
 
     captions = annotation_data['caption'].values
     image_id = annotation_data['image_id'].values
-
+    print(len(captions))
+    step_count = 0
+    start_from_last_save = 0
     for epoch in range(n_epochs):
+        save_count = 0
         for start, end in zip( \
-                range(0, len(captions), batch_size),
-                range(batch_size, len(captions), batch_size)):
+                range(start_from_last_save + 0, len(captions), batch_size),
+                range(start_from_last_save + batch_size, len(captions), batch_size)):
 
             current_feats = feats[ image_id[start:end] ]
             current_feats = current_feats.reshape(-1, ctx_shape[1], ctx_shape[0]).swapaxes(1,2)
@@ -294,11 +308,16 @@ def train(pretrained_model_path=pretrained_model_path): # 전에 학습하던게
                 context:current_feats,
                 sentence:current_caption_matrix,
                 mask:current_mask_matrix})
-
-            print "Current Cost: ", loss_value
+            
+            save_count = save_count + 1
+            step_count = step_count + 1
+            if save_count == 500:
+                save_count = 0
+                saver.save(sess, os.path.join(model_path, 'model'), global_step=step_count)
+            print "Current Cost:%f, Global Step:%d, Epoch:%d" % (loss_value, step_count, epoch)
         saver.save(sess, os.path.join(model_path, 'model'), global_step=epoch)
 
-def test(test_feat='./guitar_player.npy', model_path='./model/model-6', maxlen=20):
+def test(test_feat='./guitar_player.npy', model_path='./model/model-0', maxlen=20):
     annotation_data = pd.read_pickle(annotation_path)
     captions = annotation_data['caption'].values
     wordtoix, ixtoword, bias_init_vector = preProBuildWordVocab(captions)
@@ -327,9 +346,11 @@ def test(test_feat='./guitar_player.npy', model_path='./model/model-6', maxlen=2
 
     generated_words = generated_words[:punctuation]
     alpha_list_val = alpha_list_val[:punctuation]
+    print(generated_words)
     return generated_words, alpha_list_val
 
 #    generated_sentence = ' '.join(generated_words)
 #    ipdb.set_trace()
 
-
+if __name__ == "__main__":
+    train()
