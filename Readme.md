@@ -1,5 +1,4 @@
 # 2017.4.1 updated
-* Forked the code from[jazzsaxmafia/show_attend_and_tell.tensorflow](https://github.com/jazzsaxmafia/show_attend_and_tell.tensorflow)
 * The Raw Code can not work in Tensorflow-1.0 version, so I updated the code to the new version.
 * Also, the raw code need both high RAM and high GPU memory, so I fix the code to run on my own machine, which has only 16G RAM and 4G GPU memory.
 * So if your memory is limited, you can try this version.
