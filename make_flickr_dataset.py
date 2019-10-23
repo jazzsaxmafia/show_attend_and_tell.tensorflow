@@ -12,7 +12,7 @@ flickr_image_path = '../show_attend_and_tell/images/flickr30k-images/'
 feat_path = './data/feats.npy'
 annotation_result_path = './data/annotations.pickle'
 
-cnn = CNN(model=vgg_model, deploy=vgg_deploy, width=224, height=224)
+cnn = CNN(model=vgg_model, deploy=vgg_deploy, width=1920, height=1080)
 
 annotations = pd.read_table(annotation_path, sep='\t', header=None, names=['image', 'caption'])
 annotations['image_num'] = annotations['image'].map(lambda x: x.split('#')[1])
@@ -25,6 +25,6 @@ annotations = pd.merge(annotations, image_df)
 annotations.to_pickle(annotation_result_path)
 
 if not os.path.exists(feat_path):
-    feats = cnn.get_features(unique_images, layers='conv5_3', layer_sizes=[512,14,14])
+    feats = cnn.get_features(unique_images, layers='conv5_3', layer_sizes=[256,14,14])
     np.save(feat_path, feats)
 
